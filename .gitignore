@@ -1,0 +1,25 @@
+# ── Python (backend) ──
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+backend/build/
+backend/dist/
+*.spec
+
+# ── Node / Vite (frontend) ──
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/.vite/
+frontend/vite.config.*.timestamp-*
+
+# ── 로그 ──
+*.log
+npm-debug.log*
+
+# ── OS / 에디터 ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

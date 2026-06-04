@@ -1,0 +1,2 @@
+pywebview>=5.0
+# 실행파일 패키징(선택): pip install pyinstaller
