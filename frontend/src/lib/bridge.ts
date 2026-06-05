@@ -1,8 +1,10 @@
-// window.pywebview.api 래퍼.
-// pywebview 창 안에서는 Python Api 를 직접 호출하고,
-// 일반 브라우저(localhost:5173)로 열었을 땐 가벼운 JS mock 으로 폴백한다.
+// 백엔드 브릿지.
+//  - 데스크탑(pywebview): window.pywebview.api 로 Python 을 직접 호출.
+//  - 웹(브라우저): Pyodide 로 똑같은 backend/sorts/*.py 를 그대로 실행.
+//  - Pyodide 적재 실패 시에만 최후의 수단으로 가벼운 JS mock 으로 폴백.
 
 import type { AlgoMeta, Frame, RandomResult, SNode, SortResult } from "./types";
+import { ensureEngine, pyList, pyRandom, pySort } from "./pyodideEngine";
 
 interface PyApi {
   list_algorithms(): Promise<AlgoMeta[]>;
@@ -20,27 +22,38 @@ export function isNative(): boolean {
   return Boolean(window.pywebview?.api);
 }
 
-const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
-
-// pywebview 가 window.pywebview.api 를 주입할 때까지 기다린다(최대 timeout).
-// pywebviewready 이벤트는 우리 리스너 등록 전에 이미 끝났을 수 있어 폴링도 병행.
-const API_WAIT_MS = 5000;
-async function waitForApi(): Promise<PyApi | null> {
-  const start = Date.now();
-  while (!window.pywebview?.api && Date.now() - start < API_WAIT_MS) {
-    await sleep(40);
+// 웹이면 Pyodide 를 미리 데운다(첫 정렬 클릭 전에 로딩을 끝내 둠). 데스크탑은 무시.
+export async function warmUp(): Promise<void> {
+  if ((await detectEnv()) === "web") {
+    try {
+      await ensureEngine();
+    } catch {
+      /* 실패해도 호출 시 mock 으로 폴백 */
+    }
   }
-  return window.pywebview?.api ?? null;
 }
 
-// api 호출은 브릿지가 워밍업 중이면 간헐적으로 실패할 수 있어 몇 번 재시도한다.
-// 끝까지 api 가 없으면(=일반 브라우저) mock 으로 폴백.
-async function withApi<T>(
-  call: (api: PyApi) => Promise<T>,
-  fallback: () => Promise<T>,
-): Promise<T> {
-  const api = await waitForApi();
-  if (!api) return fallback();
+const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
+
+// 실행 환경을 한 번만 판별해 캐시한다. pywebview 는 보통 1초 안에 api 를 주입하므로,
+// 잠깐 기다려 보고 없으면 웹(Pyodide)으로 확정한다(브라우저에서 매 호출 대기 방지).
+const ENV_WAIT_MS = 1500;
+let envPromise: Promise<"native" | "web"> | null = null;
+function detectEnv(): Promise<"native" | "web"> {
+  if (!envPromise) {
+    envPromise = (async () => {
+      const start = Date.now();
+      while (!window.pywebview?.api && Date.now() - start < ENV_WAIT_MS) {
+        await sleep(40);
+      }
+      return window.pywebview?.api ? "native" : "web";
+    })();
+  }
+  return envPromise;
+}
+
+// 데스크탑: 브릿지 워밍업 중 간헐적 실패가 있어 몇 번 재시도.
+async function callNative<T>(call: (api: PyApi) => Promise<T>): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < 6; i++) {
     try {
@@ -53,17 +66,30 @@ async function withApi<T>(
   throw lastErr;
 }
 
+// 웹: Pyodide 로 실행, 실패 시 mock 폴백.
+async function callWeb<T>(py: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
+  try {
+    return await py();
+  } catch (e) {
+    console.warn("[bridge] Pyodide 엔진 실패 → mock 폴백", e);
+    return fallback();
+  }
+}
+
 // ── 공개 API ──────────────────────────────────────────────
-export function listAlgorithms(): Promise<AlgoMeta[]> {
-  return withApi((api) => api.list_algorithms(), () => mock.list());
+export async function listAlgorithms(): Promise<AlgoMeta[]> {
+  if ((await detectEnv()) === "native") return callNative((api) => api.list_algorithms());
+  return callWeb(() => pyList(), () => mock.list());
 }
 
-export function randomArray(count: number, algoId?: string | null): Promise<RandomResult> {
-  return withApi((api) => api.random_array(count, algoId ?? null), () => mock.random(count, algoId));
+export async function randomArray(count: number, algoId?: string | null): Promise<RandomResult> {
+  if ((await detectEnv()) === "native") return callNative((api) => api.random_array(count, algoId ?? null));
+  return callWeb(() => pyRandom(count, algoId), () => mock.random(count, algoId));
 }
 
-export function sort(algoId: string, array: number[]): Promise<SortResult> {
-  return withApi((api) => api.sort(algoId, array), () => mock.sort(algoId, array));
+export async function sort(algoId: string, array: number[]): Promise<SortResult> {
+  if ((await detectEnv()) === "native") return callNative((api) => api.sort(algoId, array));
+  return callWeb(() => pySort(algoId, array), () => mock.sort(algoId, array));
 }
 
 // ── 브라우저 전용 mock (Python 없이 레이아웃 확인용) ──────────

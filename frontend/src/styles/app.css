@@ -1001,3 +1001,48 @@ body,
   font-weight: var(--funky-weight-black);
   font-variant-numeric: tabular-nums;
 }
+
+/* ════════════════════════════════════════════════════════
+   엔진 로딩 게이트 (웹 전용 — Pyodide 적재 중)
+   ════════════════════════════════════════════════════════ */
+.engine-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--funky-space-xl);
+  background: color-mix(in srgb, var(--funky-bg) 78%, transparent);
+  backdrop-filter: blur(3px);
+}
+.engine-gate__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--funky-space-md);
+  max-width: 420px;
+  text-align: center;
+  padding: var(--funky-space-xl);
+}
+.engine-gate__spinner {
+  width: 44px;
+  height: 44px;
+  border: 5px solid var(--funky-ink);
+  border-top-color: var(--funky-yellow);
+  border-radius: 50%;
+  box-shadow: var(--funky-shadow-sm);
+  animation: engine-spin 0.8s linear infinite;
+}
+.engine-gate__title {
+  margin: 0;
+}
+.engine-gate__detail {
+  color: var(--funky-ink-muted);
+  font-size: var(--funky-size-sm);
+}
+@keyframes engine-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

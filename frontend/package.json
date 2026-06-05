@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "sync-backend": "node scripts/sync-backend.mjs",
+    "predev": "node scripts/sync-backend.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/sync-backend.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

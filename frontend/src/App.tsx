@@ -3,7 +3,8 @@ import { Button, Card, Input, Tag, Text } from "@studio-baeks/funky-ui";
 import { AlgoModal } from "./components/AlgoModal";
 import { BarCanvas } from "./components/BarCanvas";
 import { TutorialOverlay } from "./components/TutorialOverlay";
-import { listAlgorithms, randomArray, sort } from "./lib/bridge";
+import { listAlgorithms, randomArray, sort, warmUp } from "./lib/bridge";
+import { onEngineStatus, type EngineStatus } from "./lib/pyodideEngine";
 import { ensureAudio, playValue } from "./lib/sound";
 import type { AlgoMeta, Frame, SortResult } from "./lib/types";
 
@@ -38,6 +39,17 @@ export default function App() {
   const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED);
   const [busy, setBusy] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
+
+  // 웹(Pyodide) 엔진 적재 상태. 데스크탑(pywebview)에선 계속 "idle" 이라 오버레이 안 뜸.
+  const [engine, setEngine] = useState<{ status: EngineStatus; detail: string }>({
+    status: "idle",
+    detail: "",
+  });
+  useEffect(() => {
+    const off = onEngineStatus((status, detail) => setEngine({ status, detail }));
+    void warmUp(); // 웹이면 미리 데워둔다
+    return off;
+  }, []);
 
   // ── 초기 로드: 알고리즘 목록 + 첫 랜덤 배열 ──────────────
   // pywebview 브릿지 준비 타이밍이 들쭉날쭉해 목록이 비면 잠깐 뒤 재시도한다.
@@ -421,6 +433,21 @@ export default function App() {
         onNavigate={(id) => setCurrent(algos.find((a) => a.id === id) ?? current)}
         onClose={() => setTutorOpen(false)}
       />
+
+      {engine.status === "loading" && (
+        <div className="engine-gate">
+          <Card className="engine-gate__card">
+            <div className="engine-gate__spinner" aria-hidden />
+            <Text variant="heading" as="h2" className="engine-gate__title">
+              Python 엔진 준비 중
+            </Text>
+            <Text className="engine-gate__detail">
+              {engine.detail || "불러오는 중"} — 강의 기반 정렬 코드를 브라우저에서
+              그대로 실행합니다.
+            </Text>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,51 @@
+name: Build desktop apps
+
+# 데스크탑 바이너리(.app / .exe)를 macOS·Windows 러너에서 각각 빌드해 아티팩트로 올린다.
+# (PyInstaller 는 크로스 컴파일이 안 되므로 각 OS 에서 따로 빌드해야 한다.)
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: SortSimulation-macos
+          - os: windows-latest
+            artifact: SortSimulation-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pyinstaller
+
+      - name: Package (PyInstaller)
+        run: pyinstaller --clean --noconfirm deploy/SortSimulation.spec
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/*
+          if-no-files-found: error

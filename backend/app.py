@@ -28,6 +28,15 @@ BASE_DIR = Path(__file__).resolve().parent
 DIST_INDEX = BASE_DIR.parent / "frontend" / "dist" / "index.html"
 DEV_URL = "http://localhost:5173"
 
+# PyInstaller 로 묶인 실행파일에선 frontend/dist 가 번들 안 "webui/" 에 들어간다
+# (deploy/SortSimulation.spec 의 datas 참고). 그 경우 _MEIPASS 기준으로 찾는다.
+def _bundled_index() -> Path | None:
+    if getattr(sys, "frozen", False):
+        meipass = Path(getattr(sys, "_MEIPASS", BASE_DIR))
+        cand = meipass / "webui" / "index.html"
+        return cand if cand.exists() else None
+    return None
+
 # 막대 높이가 보기 좋은 범위. radix(분배정렬) 도 양수만 다루므로 안전.
 VALUE_MIN = 5
 VALUE_MAX = 99
@@ -87,6 +96,9 @@ class Api:
 def _resolve_target(dev: bool) -> str:
     if dev:
         return DEV_URL
+    bundled = _bundled_index()
+    if bundled is not None:
+        return str(bundled)
     if not DIST_INDEX.exists():
         sys.stderr.write(
             f"[Sort Simulation] 빌드 결과가 없습니다: {DIST_INDEX}\n"
@@ -104,7 +116,7 @@ def main():
 
     api = Api()
     webview.create_window(
-        "Sort Simulation — DS Lecture 18",
+        "Sort Simulation",
         url=target,
         js_api=api,
         width=1180,
