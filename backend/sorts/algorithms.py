@@ -161,17 +161,27 @@ def binary_tree_sort(t: Tracer):
     def inorder(node):
         if node is None:
             return
-        # 이 노드로 내려가 왼쪽 서브트리부터 본다 (travel)
+        # 이 노드 방문 — LNR(왼쪽 → 자기 → 오른쪽) 순서로 본다
         setfull(node.v, "visit")
-        t.mark("select", note=f"노드 {node.v} 방문 — 왼쪽 서브트리 먼저")
-        inorder(node.l)
-        # 왼쪽을 다 봤으니 이 노드를 출력
+        t.mark("select", note=f"노드 {node.v} 방문 — 먼저 왼쪽(L)부터")
+        # L: 왼쪽 서브트리 (있으면 내려갔다가 돌아온다)
+        if node.l is not None:
+            inorder(node.l)
+            setfull(node.v, "visit")
+            t.mark("select", note=f"왼쪽 서브트리 끝 → 노드 {node.v} 로 복귀, 이제 출력(N) 차례")
+        # N: 이 노드를 출력
         i = out_idx[0]
         setfull(node.v, "output")
         t.write(i, node.v, note=f"LNR {i + 1}번째 출력 → [{i}] = {node.v}")
         t.lock(i)
         out_idx[0] += 1
-        inorder(node.r)
+        # R: 오른쪽 서브트리 (있으면 내려갔다가 돌아온다)
+        if node.r is not None:
+            setfull(node.v, "visit")
+            t.mark("select", note=f"이제 노드 {node.v} 의 오른쪽(R)으로 내려간다")
+            inorder(node.r)
+            setfull(node.v, "visit")
+            t.mark("select", note=f"오른쪽 서브트리 끝 → 노드 {node.v} 서브트리 완료, 부모로 복귀")
 
     inorder(root)
     setfull(None, "output")
@@ -362,6 +372,10 @@ def heap_sort(t: Tracer):
         while True:
             child = 2 * root + 1
             if child >= end:
+                # 자식이 없는 곳(리프)까지 내려왔으면 끝 — 멈추는 판정도 한 단계로 보인다
+                htree(end, a[root])
+                t.pointers(root=root)
+                t.mark("select", active=(root,), note=f"a[{root}]={a[root]} 는 자식이 없다(리프 도달) → sift-down 종료")
                 break
             if child + 1 < end:
                 htree(end, a[root])
@@ -380,6 +394,10 @@ def heap_sort(t: Tracer):
                 t.swap(root, child, note=f"부모가 더 작으니 교환 (a[{root}] ⇄ a[{child}])")
                 root = child
             else:
+                # 부모가 자식보다 크거나 같으면 힙 속성 만족 — 여기서 멈춘다는 판정을 보여준다
+                htree(end, a[root])
+                t.pointers(root=root, child=child)
+                t.mark("select", active=(root,), note=f"부모 a[{root}]({a[root]}) ≥ 큰 자식 a[{child}]({a[child]}) → 힙 속성 만족, sift-down 종료")
                 break
 
     # 1단계: 최대 힙 만들기 (아래쪽 부모부터 sift-down)
@@ -393,6 +411,11 @@ def heap_sort(t: Tracer):
         htree(end + 1, a[0])
         t.swap(0, end, note=f"최댓값(루트) a[0]={a[0]} 를 맨 뒤 [{end}]로 빼낸다")
         t.lock(end)
+        if end > 1:
+            # 힙이 한 칸 줄었으니, 새로 올라온 루트부터 다시 정리한다는 단계를 보여준다
+            htree(end, a[0])
+            t.pointers(root=0)
+            t.mark("select", active=(0,), note=f"힙 크기 {end} 로 줄었다 — 새 루트 a[0]={a[0]} 부터 다시 sift-down")
         sift_down(0, end)
     t.lock(0)
     t.set_tree()  # 트리 상태 해제
