@@ -1016,13 +1016,12 @@ body,
   background: var(--funky-surface);
 }
 .spinner {
-  width: 44px;
-  height: 44px;
-  border: 5px solid var(--funky-ink);
-  border-top-color: var(--funky-yellow);
+  width: 48px;
+  height: 48px;
+  border: 6px solid color-mix(in srgb, var(--funky-ink) 16%, transparent);
+  border-top-color: var(--funky-ink);
   border-radius: 50%;
-  box-shadow: var(--funky-shadow-sm);
-  animation: spin 0.8s linear infinite;
+  animation: spin 0.7s linear infinite;
 }
 @keyframes spin {
   to {

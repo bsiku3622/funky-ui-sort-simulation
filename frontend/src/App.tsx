@@ -38,7 +38,7 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED);
   const [busy, setBusy] = useState(false);
-  const [soundOn, setSoundOn] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
 
   // 웹(Pyodide) 엔진 적재 상태. 데스크탑(pywebview)에선 계속 "idle" 이라 스피너 안 뜸.
   const [engineStatus, setEngineStatus] = useState<EngineStatus>("idle");
@@ -361,6 +361,9 @@ export default function App() {
             max={Math.min(250, current?.maxN ?? 250)}
             value={count}
             onChange={onCountChange}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !busy && current) handleRandom();
+            }}
             className="control__count"
           />
           <Button
