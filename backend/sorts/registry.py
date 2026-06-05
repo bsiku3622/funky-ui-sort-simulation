@@ -39,11 +39,17 @@ ALGORITHMS: list[AlgoSpec] = [
              "BST 구성 후 중위순회(LNR)", alg.binary_tree_sort),
     # ── 개선된 ──
     AlgoSpec("shell", "Shell Sort", "efficient", "O(n^1.25)",
-             "gap 간격 삽입정렬을 gap 줄이며 반복", alg.shell_sort),
+             "gap 간격 삽입정렬을 gap 줄이며 반복 (강의 수열)", alg.shell_sort),
+    AlgoSpec("shell_classic", "Shell Sort (Classic)", "efficient", "O(n^1.5)",
+             "원조 Shell 수열 — gap 을 n/2, n/4, …, 1 로 절반씩", alg.shell_classic_sort),
     AlgoSpec("quick", "Quick Sort", "efficient", "평균 O(n log n)",
              "pivot 기준 양끝 포인터 분할", alg.quick_sort),
+    AlgoSpec("dual_pivot", "Dual-Pivot Quick Sort", "efficient", "평균 O(n log n)",
+             "두 pivot 으로 3분할 (Yaroslavskiy)", alg.dual_pivot_quick_sort),
     AlgoSpec("merge", "Merge Sort", "efficient", "O(n log n)",
              "분할 후 병합 (강의 merge 규칙)", alg.merge_sort),
+    AlgoSpec("tim", "Tim Sort", "efficient", "O(n log n)",
+             "run 삽입정렬 후 안정 병합 (Python·Java 채택)", alg.tim_sort),
     AlgoSpec("heap", "Heap Sort", "efficient", "O(n log n)",
              "최대 힙 구성 후 루트를 뒤로 추출", alg.heap_sort),
     # ── 분배 ──
@@ -52,9 +58,9 @@ ALGORITHMS: list[AlgoSpec] = [
              non_negative=True),
     # ── 개그 ──
     AlgoSpec("stalin", "Stalin Sort ☭", "gag", "O(n)",
-             "순서 어기는 원소를 숙청(제거)", alg.stalin_sort, gag=True, max_n=40),
+             "순서 어기는 원소를 숙청(제거)", alg.stalin_sort, gag=True),
     AlgoSpec("bogo", "Bogo Sort 🎲", "gag", "평균 O(n·n!)",
-             "정렬될 때까지 무작위로 섞음", alg.bogo_sort, gag=True, max_n=7),
+             "정렬될 때까지 무작위로 섞음 (사실상 ∞)", alg.bogo_sort, gag=True),
     AlgoSpec("sleep", "Sleep Sort ⏰", "gag", "O(n) (개념상)",
              "값만큼 잠들었다 깨어남", alg.sleep_sort, gag=True, max_n=40),
 ]
@@ -120,4 +126,5 @@ def run(algo_id: str, array: list[int]) -> dict:
         "comparisons": tracer.comparisons,
         "swaps": tracer.swaps,
         "truncated": truncated,
+        "infinite": tracer.infinite,  # bogo 처럼 끝나지 않는 정렬이면 True (UI 가 ∞ 표시)
     }

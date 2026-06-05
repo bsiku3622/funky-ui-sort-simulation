@@ -56,6 +56,7 @@ export interface SortResult {
   comparisons: number;
   swaps: number;
   truncated: boolean;
+  infinite?: boolean; // bogo 처럼 끝나지 않는 정렬이면 true → frame 수를 ∞ 로 표시
 }
 
 export interface RandomResult {

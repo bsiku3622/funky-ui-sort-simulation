@@ -346,6 +346,219 @@ def merge_sort(t: Tracer):
     t.done()
 
 
+def shell_classic_sort(t: Tracer):
+    """고전(원조) Shell Sort — Shell(1959) 의 gap 수열 n/2, n/4, …, 1 을 쓴다.
+
+    강의판 Shell Sort 와 같은 'gap 간격 삽입정렬'이지만, gap 을 홀수로 맞추지 않고
+    그냥 절반씩 줄인다는 점만 다르다(가장 널리 알려진 일반형).
+    """
+    a = t.a
+    n = len(a)
+    gap = n // 2
+    while gap >= 1:
+        t.scalars(gap=gap)
+        for i in range(gap, n):
+            key = a[i]
+            t.held(("temp", key))
+            t.pointers(i=i, j=i)
+            t.mark("select", active=(i,), note=f"gap={gap}: a[{i}]={key} 를 temp 로 빼낸다")
+            j = i
+            while j >= gap:
+                t.held(("temp", key), active="temp")
+                t.pointers(i=i, j=j)
+                t.cmp(active=(j - gap,), note=f"gap={gap}: a[{j - gap}]({a[j - gap]}) 와 temp({key}) 비교")
+                if a[j - gap] > key:
+                    t.held(("temp", key))
+                    t.write(j, a[j - gap], note=f"a[{j - gap}]={a[j - gap]} 를 {gap}칸 뒤로 (a[{j}]←{a[j - gap]})")
+                    j -= gap
+                else:
+                    break
+            t.held(("temp", key))
+            t.pointers(i=i, j=j)
+            t.write(j, key, note=f"빈자리 a[{j}] 에 temp={key} 를 꽂는다")
+            t.clear_held()
+        gap //= 2  # 절반씩 (n/2 → n/4 → … → 1)
+    t.clear_scalars()
+    t.clear_pointers()
+    t.lock_all()
+    t.done()
+
+
+def dual_pivot_quick_sort(t: Tracer):
+    """두 개의 pivot(P1 ≤ P2)으로 세 구간(<P1, P1..P2, >P2)으로 나눈다.
+
+    Java 의 Arrays.sort(기본형) 가 쓰는 Yaroslavskiy 의 dual-pivot quicksort.
+    양 끝을 두 pivot 으로 잡고, lt·gt·k 세 포인터로 한 번에 3분할한다.
+    """
+    a = t.a
+
+    def partition(lo, hi):
+        # 양 끝을 두 pivot 으로 — 먼저 P1 ≤ P2 가 되도록 맞춘다
+        if a[lo] > a[hi]:
+            t.pointers(lo=lo, hi=hi)
+            t.swap(lo, hi, note=f"양 끝 정렬: a[{lo}] ⇄ a[{hi}] (P1 ≤ P2 보장)")
+        p1, p2 = a[lo], a[hi]
+        t.held(("P1", p1), ("P2", p2))
+        t.pointers(lo=lo, hi=hi)
+        t.mark("pivot", active=(lo, hi), note=f"두 pivot: P1=a[{lo}]={p1}, P2=a[{hi}]={p2}")
+        lt, gt, k = lo + 1, hi - 1, lo + 1
+        while k <= gt:
+            t.held(("P1", p1), ("P2", p2))
+            t.pointers(lt=lt, gt=gt, k=k)
+            t.cmp(active=(k,), note=f"a[{k}]({a[k]}) 를 P1({p1})·P2({p2}) 와 비교")
+            if a[k] < p1:
+                t.held(("P1", p1), ("P2", p2))
+                t.pointers(lt=lt, gt=gt, k=k)
+                t.swap(k, lt, note=f"a[{k}] < P1 → 왼쪽 구간으로 (a[{k}] ⇄ a[{lt}])")
+                lt += 1
+            elif a[k] > p2:
+                while a[gt] > p2 and k < gt:
+                    t.held(("P1", p1), ("P2", p2))
+                    t.pointers(lt=lt, gt=gt, k=k)
+                    t.cmp(active=(gt,), note=f"오른쪽 gt: a[{gt}]({a[gt]}) > P2({p2}) → 안쪽으로")
+                    gt -= 1
+                t.held(("P1", p1), ("P2", p2))
+                t.pointers(lt=lt, gt=gt, k=k)
+                t.swap(k, gt, note=f"a[{k}] > P2 → 오른쪽 구간으로 (a[{k}] ⇄ a[{gt}])")
+                gt -= 1
+                if a[k] < p1:
+                    t.held(("P1", p1), ("P2", p2))
+                    t.pointers(lt=lt, gt=gt, k=k)
+                    t.swap(k, lt, note=f"바뀐 a[{k}] < P1 → 다시 왼쪽으로 (a[{k}] ⇄ a[{lt}])")
+                    lt += 1
+            k += 1
+        lt -= 1
+        gt += 1
+        t.held(("P1", p1), ("P2", p2))
+        t.pointers(lt=lt, gt=gt)
+        t.swap(lo, lt, note=f"P1 을 제자리 [{lt}]로 (a[{lo}] ⇄ a[{lt}])")
+        t.swap(hi, gt, note=f"P2 를 제자리 [{gt}]로 (a[{hi}] ⇄ a[{gt}])")
+        t.lock(lt)
+        t.lock(gt)
+        t.clear_held()
+        return lt, gt
+
+    def dpsort(lo, hi):
+        if lo > hi:
+            return
+        if lo == hi:
+            t.lock(lo)
+            return
+        if hi - lo == 1:
+            t.pointers(lo=lo, hi=hi)
+            t.cmp(active=(lo, hi), note=f"두 원소 a[{lo}]({a[lo]}) 와 a[{hi}]({a[hi]}) 비교")
+            if a[lo] > a[hi]:
+                t.swap(lo, hi, note=f"a[{lo}] ⇄ a[{hi}]")
+            t.lock(lo)
+            t.lock(hi)
+            return
+        lp, gp = partition(lo, hi)
+        dpsort(lo, lp - 1)
+        dpsort(lp + 1, gp - 1)
+        dpsort(gp + 1, hi)
+
+    dpsort(0, len(a) - 1)
+    t.clear_pointers()
+    t.lock_all()
+    t.done()
+
+
+def tim_sort(t: Tracer):
+    """run(작은 구간)을 삽입정렬한 뒤, run 들을 병합해 합치는 하이브리드 정렬. ⏱
+
+    Python 의 sorted()·Java 의 Object[] 정렬이 쓰는 Tim Sort 의 핵심 구조를 보여준다
+    (run 삽입정렬 + 안정 병합). 실제 Tim Sort 의 자연 run 탐지·갤로핑·스택 불변식은
+    생략하고, 막대로 보이도록 run 이 여러 개 생기게 minrun 을 잡는다.
+    """
+    a = t.a
+    n = len(a)
+    if n <= 1:
+        t.lock_all()
+        t.done()
+        return
+
+    # 시각화를 위해 run 이 4개 안팎 생기도록 minrun 을 정한다(원조는 32~64).
+    min_run = 2
+    while min_run * 4 < n:
+        min_run *= 2
+    min_run = min(min_run, 32)
+
+    # ── 1단계: min_run 크기의 run 들을 각각 삽입정렬 ──
+    runs = []
+    start = 0
+    while start < n:
+        end = min(start + min_run, n)
+        t.scalars(run=len(runs) + 1, minrun=min_run)
+        t.mark("select", active=tuple(range(start, end)), note=f"run #{len(runs) + 1}: [{start}..{end - 1}] 을 삽입정렬")
+        for j in range(start + 1, end):
+            key = a[j]
+            t.held(("key", key))
+            k = j - 1
+            while k >= start:
+                t.held(("key", key), active="key")
+                t.pointers(i=j, j=k)
+                t.cmp(active=(k,), note=f"run 내부: a[{k}]({a[k]}) 와 key({key}) 비교")
+                if a[k] > key:
+                    t.held(("key", key))
+                    t.write(k + 1, a[k], note=f"a[{k}]={a[k]} 를 뒤로 (a[{k + 1}]←{a[k]})")
+                    k -= 1
+                else:
+                    break
+            t.held(("key", key))
+            t.write(k + 1, key, note=f"빈자리 a[{k + 1}] 에 key={key}")
+            t.clear_held()
+        runs.append((start, end - 1))
+        start = end
+    t.clear_held()
+
+    # ── 2단계: run 들을 양옆으로 안정 병합 (같으면 왼쪽 먼저 → 안정성) ──
+    def merge(lo, mid, hi):
+        left = a[lo : mid + 1]
+        right = a[mid + 1 : hi + 1]
+        x = y = 0
+        k = lo
+        while x < len(left) and y < len(right):
+            t.pointers(i=lo + x, j=mid + 1 + y, k=k)
+            t.cmp(active=(lo + x, mid + 1 + y), note=f"병합: 왼쪽 {left[x]} 와 오른쪽 {right[y]} 비교")
+            if left[x] <= right[y]:
+                t.write(k, left[x], note=f"작은 왼쪽 {left[x]} → [{k}]")
+                x += 1
+            else:
+                t.write(k, right[y], note=f"작은 오른쪽 {right[y]} → [{k}]")
+                y += 1
+            k += 1
+        while x < len(left):
+            t.write(k, left[x], note=f"왼쪽 잔여 {left[x]} → [{k}]")
+            x += 1
+            k += 1
+        while y < len(right):
+            t.write(k, right[y], note=f"오른쪽 잔여 {right[y]} → [{k}]")
+            y += 1
+            k += 1
+
+    while len(runs) > 1:
+        merged = []
+        idx = 0
+        while idx < len(runs):
+            if idx + 1 < len(runs):
+                lo, mid = runs[idx][0], runs[idx][1]
+                hi = runs[idx + 1][1]
+                t.scalars(runs_left=len(runs))
+                t.mark("select", active=tuple(range(lo, hi + 1)), note=f"run 병합: [{lo}..{mid}] + [{mid + 1}..{hi}]")
+                merge(lo, mid, hi)
+                merged.append((lo, hi))
+                idx += 2
+            else:
+                merged.append(runs[idx])
+                idx += 1
+        runs = merged
+
+    t.clear_scalars()
+    t.clear_pointers()
+    t.lock_all()
+    t.done()
+
+
 def heap_sort(t: Tracer):
     """최대 힙을 만든 뒤 루트(최댓값)를 맨 뒤로 빼며 정렬한다.
 
@@ -488,14 +701,17 @@ def stalin_sort(t: Tracer):
 def bogo_sort(t: Tracer):
     """정렬될 때까지 전체를 무작위로 섞는다. 🎲 평균 O(n·n!).
 
-    폭주 방지를 위해 셔플 횟수를 제한한다. 작은 배열에서만 의미 있음.
+    이론상 끝나지 않을 수 있다(작은 배열만 운 좋게 정렬됨). 강제로 멈춰 '포기'하지
+    않고, 충분히 많이 섞는 모습만 보여준 뒤 끝나지 않음을 ∞ 로 표시한다(t.infinite).
+    frame 은 유한하게 만들어야 결과를 돌려줄 수 있으므로 frame 예산까지만 섞는다.
     """
     a = t.a
     n = len(a)
-    MAX_SHUFFLE = 250
+    FRAME_BUDGET = 6000  # 이 정도 섞어도 안 끝나면 사실상 ∞ 로 본다
     rng = random.Random()  # 시드 고정 안 함: 매번 다른 운빨
+    tries = 0
 
-    for tries in range(MAX_SHUFFLE + 1):
+    while True:
         ok = True
         for i in range(n - 1):
             t.compare(i, i + 1)
@@ -507,12 +723,16 @@ def bogo_sort(t: Tracer):
             t.done(note=f"{tries}번 셔플 후 우연히 정렬됨 🍀")
             return
         rng.shuffle(a)
+        tries += 1
         t.mark(
             "swap",
             active=list(range(n)),
-            note=f"정렬 안 됨 → 전체 셔플 #{tries + 1} 🎲",
+            note=f"정렬 안 됨 → 전체 셔플 #{tries} 🎲",
         )
-    t.done(note=f"{MAX_SHUFFLE}번 시도 후 포기… 🥲 (운이 없었습니다)")
+        if len(t.frames) >= FRAME_BUDGET:
+            t.infinite = True
+            t.done(note=f"{tries}번 섞어도 안 끝남… 이게 Bogo — 사실상 영원히 ∞ ♾️")
+            return
 
 
 def sleep_sort(t: Tracer):

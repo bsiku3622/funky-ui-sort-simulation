@@ -23,6 +23,22 @@ const SPEEDS = [
 ];
 const DEFAULT_SPEED = 1;
 
+// Bogo 라이브 모드용: Fisher–Yates 셔플(새 배열 반환)과 오름차순 검사.
+function shuffled(src: number[]): number[] {
+  const a = src.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    const tmp = a[i];
+    a[i] = a[j];
+    a[j] = tmp;
+  }
+  return a;
+}
+function isAscending(a: number[]): boolean {
+  for (let i = 0; i < a.length - 1; i++) if (a[i] > a[i + 1]) return false;
+  return true;
+}
+
 export default function App() {
   const [algos, setAlgos] = useState<AlgoMeta[]>([]);
   const [current, setCurrent] = useState<AlgoMeta | null>(null);
@@ -39,6 +55,11 @@ export default function App() {
   const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED);
   const [busy, setBusy] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+
+  // Bogo 전용 라이브 모드: frame 을 미리 굽지 않고, 재생 중 매 틱 새로 섞는다(진짜 무한).
+  const [liveArr, setLiveArr] = useState<number[] | null>(null);
+  const [liveShuffles, setLiveShuffles] = useState(0);
+  const [liveDone, setLiveDone] = useState(false); // 운 좋게 정렬되면 true
 
   // 웹(Pyodide) 엔진 적재 상태. 데스크탑(pywebview)에선 계속 "idle" 이라 스피너 안 뜸.
   const [engineStatus, setEngineStatus] = useState<EngineStatus>("idle");
@@ -94,13 +115,38 @@ export default function App() {
     };
   }, [array]);
 
-  const displayFrame: Frame | null = result ? frames[frameIdx] ?? null : previewFrame;
-  const atEnd = result ? frameIdx >= frames.length - 1 : false;
+  const isBogo = current?.id === "bogo";
 
-  // ── 재생 타이머 ─────────────────────────────────────────
+  // Bogo 라이브 모드의 현재 frame(매 틱 새로 섞인 배열을 그대로 보여준다).
+  const bogoFrame: Frame | null =
+    isBogo && liveArr
+      ? {
+          array: liveArr,
+          active: [],
+          pivot: null,
+          sorted: liveDone ? liveArr.map((_, i) => i) : [],
+          action: liveDone ? "done" : "swap",
+          note: liveDone
+            ? `${liveShuffles}번 만에 우연히 정렬됨 🍀`
+            : `전체 셔플 #${liveShuffles} 🎲 — 정렬될 때까지 영원히…`,
+          comparisons: 0,
+          swaps: liveShuffles,
+          aux: null,
+        }
+      : null;
+
+  const displayFrame: Frame | null = isBogo
+    ? bogoFrame ?? previewFrame
+    : result
+      ? frames[frameIdx] ?? null
+      : previewFrame;
+  // Bogo 는 운 좋게 정렬됐을 때만 끝(그 외엔 무한이라 끝이 없음).
+  const atEnd = isBogo ? liveDone : result ? frameIdx >= frames.length - 1 : false;
+
+  // ── 재생 타이머 (일반 frame 기반 정렬) ──────────────────
   const timer = useRef<number | null>(null);
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || isBogo) return;
     if (atEnd) {
       setPlaying(false);
       return;
@@ -113,7 +159,27 @@ export default function App() {
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
     };
-  }, [playing, frameIdx, atEnd, speedIdx, frames.length]);
+  }, [playing, frameIdx, atEnd, speedIdx, frames.length, isBogo]);
+
+  // ── 재생 타이머 (Bogo 라이브: 매 틱 새로 섞는다, 정렬될 때까지 무한) ──
+  useEffect(() => {
+    if (!playing || !isBogo) return;
+    timer.current = window.setTimeout(() => {
+      setLiveArr((prev) => {
+        const base = prev ?? array;
+        if (isAscending(base)) {
+          setLiveDone(true);
+          setPlaying(false);
+          return base;
+        }
+        return shuffled(base);
+      });
+      setLiveShuffles((c) => c + 1);
+    }, SPEEDS[speedIdx].ms);
+    return () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    };
+  }, [playing, isBogo, liveArr, speedIdx, array]);
 
   // ── 사운드: frame 이 바뀔 때 지금 건드리는 막대 값으로 음을 낸다(높은 값=높은 음) ──
   useEffect(() => {
@@ -143,6 +209,9 @@ export default function App() {
         setResult(null);
         setFrameIdx(0);
         setPlaying(false);
+        setLiveArr(null);
+        setLiveShuffles(0);
+        setLiveDone(false);
         setNotice(
           r.cappedBy
             ? `${r.cappedBy} 은(는) 최대 ${r.count}개까지만 다룹니다.`
@@ -165,7 +234,11 @@ export default function App() {
       setResult(res);
       setFrameIdx(0);
       setNotice(
-        res.truncated ? "frame 이 많아 일부에서 시각화를 중단했습니다." : null,
+        res.infinite
+          ? "Bogo 정렬은 사실상 끝나지 않습니다 (∞). 정해진 만큼 섞는 모습만 보여줍니다."
+          : res.truncated
+            ? "frame 이 많아 일부에서 시각화를 중단했습니다."
+            : null,
       );
       return res;
     } finally {
@@ -186,6 +259,9 @@ export default function App() {
       setResult(null);
       setFrameIdx(0);
       setPlaying(false);
+      setLiveArr(null);
+      setLiveShuffles(0);
+      setLiveDone(false);
       // 개그성 등 maxN 이 작은 알고리즘이면 현재 배열을 줄여 다시 만든다.
       if (array.length > algo.maxN) {
         await handleRandom(Math.min(count, algo.maxN));
@@ -206,6 +282,20 @@ export default function App() {
 
   // 가운데 버튼: 재생 중이면 STOP(일시정지), 아니면 START/재생/다시.
   const handleCenter = () => {
+    if (isBogo) {
+      // Bogo: 라이브 셔플 시작/정지(정렬될 때까지 무한히 섞는다).
+      if (playing) {
+        setPlaying(false);
+        return;
+      }
+      if (liveArr === null || liveDone) {
+        setLiveArr(array.slice());
+        setLiveShuffles(0);
+        setLiveDone(false);
+      }
+      setPlaying(true);
+      return;
+    }
     if (soundOn) ensureAudio(); // START 제스처 안에서 오디오 재개
     if (playing) {
       setPlaying(false);
@@ -232,6 +322,20 @@ export default function App() {
   // 다음/이전 스텝 — START 를 안 눌렀어도 알아서 정렬을 계산하고 한 칸 이동.
   const step = async (d: number) => {
     setPlaying(false);
+    if (isBogo) {
+      // Bogo 는 되돌릴 수 없으니, 스텝은 방향 무관 '한 번 더 섞기'.
+      setLiveDone(false);
+      if (liveArr === null) {
+        setLiveArr(shuffled(array));
+        setLiveShuffles(1);
+      } else if (isAscending(liveArr)) {
+        setLiveDone(true);
+      } else {
+        setLiveArr(shuffled(liveArr));
+        setLiveShuffles((c) => c + 1);
+      }
+      return;
+    }
     if (!result) {
       const res = await computeResult();
       if (!res) return;
@@ -242,6 +346,12 @@ export default function App() {
   };
   const reset = async () => {
     setPlaying(false);
+    if (isBogo) {
+      setLiveArr(array.slice());
+      setLiveShuffles(0);
+      setLiveDone(false);
+      return;
+    }
     if (!result) {
       await computeResult(); // frame 0(초기 상태)로
       return;
@@ -255,11 +365,17 @@ export default function App() {
     ? "계산 중…"
     : playing
       ? "STOP"
-      : !result
-        ? "START"
-        : atEnd
+      : isBogo
+        ? liveDone
           ? "다시"
-          : "재생";
+          : liveArr
+            ? "재생"
+            : "START"
+        : !result
+          ? "START"
+          : atEnd
+            ? "다시"
+            : "재생";
 
   return (
     <div className="app">
@@ -409,8 +525,16 @@ export default function App() {
           <StatChip label="비교" value={stats?.comparisons ?? 0} />
           <StatChip label="교환" value={stats?.swaps ?? 0} />
           <StatChip
-            label="frame"
-            value={result ? `${frameIdx + 1}/${frames.length}` : "—"}
+            label={isBogo ? "셔플" : "frame"}
+            value={
+              isBogo
+                ? liveArr
+                  ? `${liveShuffles} / ∞`
+                  : "—"
+                : result
+                  ? `${frameIdx + 1}/${result.infinite ? "∞" : frames.length}`
+                  : "—"
+            }
           />
         </div>
       </div>

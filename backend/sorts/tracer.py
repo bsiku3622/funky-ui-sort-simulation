@@ -36,6 +36,8 @@ class Tracer:
         self.frames: list[dict] = []
         self.comparisons: int = 0
         self.swaps: int = 0
+        # 끝나지 않는 정렬(예: bogo)에서 True. frame 은 유한하게 만들되 UI 에 ∞ 로 표시한다.
+        self.infinite: bool = False
         self._sorted: set[int] = set()
         # 트리 기반 정렬(binary_tree/heap)이 frame 마다 실어 보내는 트리 상태.
         # {"root": node|None, "highlight": value|None, "phase": str} 형태. 없으면 None.
