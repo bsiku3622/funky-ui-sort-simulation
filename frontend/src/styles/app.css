@@ -76,6 +76,7 @@ body,
 
 /* ── 시각화 무대 ── */
 .stage {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -1003,45 +1004,27 @@ body,
 }
 
 /* ════════════════════════════════════════════════════════
-   엔진 로딩 게이트 (웹 전용 — Pyodide 적재 중)
+   엔진 로딩 스피너 (웹 전용 — Pyodide 적재 중, 무대 위 중앙)
    ════════════════════════════════════════════════════════ */
-.engine-gate {
-  position: fixed;
+.stage__spinner {
+  position: absolute;
   inset: 0;
-  z-index: 1200;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--funky-space-xl);
-  background: color-mix(in srgb, var(--funky-bg) 78%, transparent);
-  backdrop-filter: blur(3px);
+  background: var(--funky-surface);
 }
-.engine-gate__card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--funky-space-md);
-  max-width: 420px;
-  text-align: center;
-  padding: var(--funky-space-xl);
-}
-.engine-gate__spinner {
+.spinner {
   width: 44px;
   height: 44px;
   border: 5px solid var(--funky-ink);
   border-top-color: var(--funky-yellow);
   border-radius: 50%;
   box-shadow: var(--funky-shadow-sm);
-  animation: engine-spin 0.8s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
-.engine-gate__title {
-  margin: 0;
-}
-.engine-gate__detail {
-  color: var(--funky-ink-muted);
-  font-size: var(--funky-size-sm);
-}
-@keyframes engine-spin {
+@keyframes spin {
   to {
     transform: rotate(360deg);
   }

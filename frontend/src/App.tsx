@@ -40,13 +40,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
 
-  // 웹(Pyodide) 엔진 적재 상태. 데스크탑(pywebview)에선 계속 "idle" 이라 오버레이 안 뜸.
-  const [engine, setEngine] = useState<{ status: EngineStatus; detail: string }>({
-    status: "idle",
-    detail: "",
-  });
+  // 웹(Pyodide) 엔진 적재 상태. 데스크탑(pywebview)에선 계속 "idle" 이라 스피너 안 뜸.
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>("idle");
   useEffect(() => {
-    const off = onEngineStatus((status, detail) => setEngine({ status, detail }));
+    const off = onEngineStatus((status) => setEngineStatus(status));
     void warmUp(); // 웹이면 미리 데워둔다
     return off;
   }, []);
@@ -336,6 +333,11 @@ export default function App() {
 
       {/* ── 시각화 무대 ── */}
       <Card className="stage" padded={false}>
+        {engineStatus === "loading" && (
+          <div className="stage__spinner" aria-label="Python 엔진 불러오는 중">
+            <div className="spinner" />
+          </div>
+        )}
         <BarCanvas frame={displayFrame} maxValue={maxValue} transMs={SPEEDS[speedIdx].trans} />
         {aux && (
           <div className="buckets">
@@ -433,21 +435,6 @@ export default function App() {
         onNavigate={(id) => setCurrent(algos.find((a) => a.id === id) ?? current)}
         onClose={() => setTutorOpen(false)}
       />
-
-      {engine.status === "loading" && (
-        <div className="engine-gate">
-          <Card className="engine-gate__card">
-            <div className="engine-gate__spinner" aria-hidden />
-            <Text variant="heading" as="h2" className="engine-gate__title">
-              Python 엔진 준비 중
-            </Text>
-            <Text className="engine-gate__detail">
-              {engine.detail || "불러오는 중"} — 강의 기반 정렬 코드를 브라우저에서
-              그대로 실행합니다.
-            </Text>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }
