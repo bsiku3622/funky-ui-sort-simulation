@@ -3,5 +3,5 @@
   "framework": null,
   "installCommand": "true",
   "buildCommand": "npm install && npm run build",
-  "outputDirectory": "frontend/dist"
+  "outputDirectory": "dist"
 }
