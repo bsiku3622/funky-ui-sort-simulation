@@ -13,6 +13,11 @@ import random
 
 from .tracer import Tracer
 
+# 트리 시각화(binary_tree/heap)를 frame 에 실을 최대 원소 수.
+# 최대 입력(250)까지 트리를 그대로 보여준다(250개 트리 ≈ 16~33MB, 무리 없음).
+# 이보다 훨씬 큰 비정상적 입력에서만 트리를 생략(노드 트리 직렬화가 폭발하므로).
+TREE_MAX = 250
+
 
 # ─────────────────────────────────────────────────────────────
 #  O(N²) 그룹
@@ -105,11 +110,16 @@ def binary_tree_sort(t: Tracer):
     """
     a = t.a
     n = len(a)
+    show_tree = n <= TREE_MAX  # 큰 n 은 트리 생략(막대만)
 
     def serialize(node):
         if node is None:
             return None
         return {"v": node.v, "l": serialize(node.l), "r": serialize(node.r)}
+
+    def stree(root_node, highlight, phase):
+        if show_tree:
+            t.set_tree(serialize(root_node), highlight=highlight, phase=phase)
 
     # ── 1단계: 삽입 — 루트부터 경로를 타고 내려가며 자리를 찾는다 ──
     root = None
@@ -117,13 +127,13 @@ def binary_tree_sort(t: Tracer):
         v = a[i]
         if root is None:
             root = _Node(v)
-            t.set_tree(serialize(root), highlight=v, phase="insert")
+            stree(root, v, "insert")
             t.mark("select", active=(i,), note=f"{v} 를 루트로 삽입")
             continue
         cur = root
         while True:
             # 현재 노드와 비교 (트리 한 칸 내려가는 매 단계가 1프레임)
-            t.set_tree(serialize(root), highlight=cur.v, phase="compare")
+            stree(root, cur.v, "compare")
             t.comparisons += 1
             go = "왼쪽" if v < cur.v else "오른쪽"
             t.mark("compare", active=(i,), note=f"삽입값 {v} 와 노드 {cur.v} 비교 → {go}으로")
@@ -137,30 +147,34 @@ def binary_tree_sort(t: Tracer):
                     cur.r = _Node(v)
                     break
                 cur = cur.r
-        t.set_tree(serialize(root), highlight=v, phase="insert")
+        stree(root, v, "insert")
         t.mark("select", active=(i,), note=f"빈 자리를 찾아 {v} 삽입")
 
     # ── 2단계: 중위순회(LNR) — 내려감(visit)·출력(output)을 각각 1프레임으로 ──
-    full = serialize(root)
+    full = serialize(root) if show_tree else None
     out_idx = [0]
+
+    def setfull(highlight, phase):
+        if show_tree:
+            t.set_tree(full, highlight=highlight, phase=phase)
 
     def inorder(node):
         if node is None:
             return
         # 이 노드로 내려가 왼쪽 서브트리부터 본다 (travel)
-        t.set_tree(full, highlight=node.v, phase="visit")
+        setfull(node.v, "visit")
         t.mark("select", note=f"노드 {node.v} 방문 — 왼쪽 서브트리 먼저")
         inorder(node.l)
         # 왼쪽을 다 봤으니 이 노드를 출력
         i = out_idx[0]
-        t.set_tree(full, highlight=node.v, phase="output")
+        setfull(node.v, "output")
         t.write(i, node.v, note=f"LNR {i + 1}번째 출력 → [{i}] = {node.v}")
         t.lock(i)
         out_idx[0] += 1
         inorder(node.r)
 
     inorder(root)
-    t.set_tree(full, highlight=None, phase="output")
+    setfull(None, "output")
     t.done(note="완료 — LNR 순회 결과가 오름차순 정렬")
 
 
@@ -170,13 +184,15 @@ def binary_tree_sort(t: Tracer):
 def shell_sort(t: Tracer):
     """gap 만큼 떨어진 원소끼리 삽입정렬. gap 을 줄여가며 반복.
 
-    강의는 K=5,3,1 예시를 보여줬다. 여기선 일반화해 gap = n//2 부터
-    절반씩 줄인다(마지막 gap=1 은 일반 삽입정렬과 동일).
+    강의(PPT)의 gap 수열을 따른다: n//2 에서 시작해 홀수로 맞춘 뒤 2씩 줄여 1까지.
+    예) n=11 → K = 5, 3, 1 (PPT와 동일).
     """
     a = t.a
     n = len(a)
     gap = n // 2
-    while gap > 0:
+    if gap % 2 == 0:
+        gap -= 1  # 홀수로 (PPT: n=11 → 5, 3, 1)
+    while gap >= 1:
         t.scalars(gap=gap)
         for i in range(gap, n):
             key = a[i]
@@ -198,7 +214,9 @@ def shell_sort(t: Tracer):
             t.pointers(i=i, j=j)
             t.write(j, key, note=f"빈자리 a[{j}] 에 temp={key} 를 꽂는다")
             t.clear_held()
-        gap //= 2
+        if gap == 1:
+            break
+        gap -= 2  # 다음 홀수 gap (PPT: 5 → 3 → 1)
     t.clear_scalars()
     t.clear_pointers()
     t.lock_all()
@@ -284,7 +302,7 @@ def merge_sort(t: Tracer):
                 active=(lo + i, mid + 1 + j),
                 note=f"왼쪽 a[{lo + i}]({left[i]}) 와 오른쪽 a[{mid + 1 + j}]({right[j]}) 비교",
             )
-            if left[i] <= right[j]:
+            if left[i] < right[j]:  # PPT 의 merge 규칙: S1[i] < S2[j] (동점이면 오른쪽)
                 t.pointers(i=lo + i, j=mid + 1 + j, k=k)
                 t.write(k, left[i], note=f"더 작은 왼쪽 {left[i]} 를 [{k}]에 기록")
                 i += 1
@@ -325,6 +343,7 @@ def heap_sort(t: Tracer):
     """
     a = t.a
     n = len(a)
+    show_tree = n <= TREE_MAX  # 큰 n 은 트리 생략(막대만)
 
     def serialize(size):
         # 현재 힙 영역 [0, size) 만 트리로 그린다(빠져나간 뒤쪽은 트리에서 사라짐).
@@ -334,6 +353,10 @@ def heap_sort(t: Tracer):
             return {"v": a[i], "l": build(2 * i + 1), "r": build(2 * i + 2)}
         return build(0)
 
+    def htree(size, highlight):
+        if show_tree:
+            t.set_tree(serialize(size), highlight=highlight, phase="heap")
+
     def sift_down(start, end):
         root = start
         while True:
@@ -341,7 +364,7 @@ def heap_sort(t: Tracer):
             if child >= end:
                 break
             if child + 1 < end:
-                t.set_tree(serialize(end), highlight=a[root], phase="heap")
+                htree(end, a[root])
                 t.pointers(root=root, child=child)
                 t.cmp(
                     active=(child, child + 1),
@@ -349,11 +372,11 @@ def heap_sort(t: Tracer):
                 )
                 if a[child + 1] > a[child]:
                     child += 1
-            t.set_tree(serialize(end), highlight=a[root], phase="heap")
+            htree(end, a[root])
             t.pointers(root=root, child=child)
             t.cmp(active=(root, child), note=f"부모 a[{root}]({a[root]}) 와 큰 자식 a[{child}]({a[child]}) 비교")
             if a[root] < a[child]:
-                t.set_tree(serialize(end), highlight=a[child], phase="heap")
+                htree(end, a[child])
                 t.swap(root, child, note=f"부모가 더 작으니 교환 (a[{root}] ⇄ a[{child}])")
                 root = child
             else:
@@ -361,13 +384,13 @@ def heap_sort(t: Tracer):
 
     # 1단계: 최대 힙 만들기 (아래쪽 부모부터 sift-down)
     for start in range(n // 2 - 1, -1, -1):
-        t.set_tree(serialize(n), highlight=a[start], phase="heap")
+        htree(n, a[start])
         t.pointers(root=start)
         t.mark("select", active=(start,), note=f"heapify: 부모 [{start}]부터 아래로 정리")
         sift_down(start, n)
     # 2단계: 루트(최댓값)를 맨 뒤로 빼며 정렬
     for end in range(n - 1, 0, -1):
-        t.set_tree(serialize(end + 1), highlight=a[0], phase="heap")
+        htree(end + 1, a[0])
         t.swap(0, end, note=f"최댓값(루트) a[0]={a[0]} 를 맨 뒤 [{end}]로 빼낸다")
         t.lock(end)
         sift_down(0, end)

@@ -68,11 +68,11 @@ export function sort(algoId: string, array: number[]): Promise<SortResult> {
 
 // ── 브라우저 전용 mock (Python 없이 레이아웃 확인용) ──────────
 const MOCK_ALGOS: AlgoMeta[] = [
-  { id: "bubble", name: "Bubble Sort", category: "quadratic", categoryLabel: "O(N²) 기본 정렬", complexity: "O(n²)", note: "mock", gag: false, maxN: 60, nonNegative: false },
-  { id: "insertion", name: "Insertion Sort", category: "quadratic", categoryLabel: "O(N²) 기본 정렬", complexity: "O(n²)", note: "mock", gag: false, maxN: 60, nonNegative: false },
-  { id: "binary_tree", name: "Binary Tree Sort", category: "quadratic", categoryLabel: "O(N²) 기본 정렬", complexity: "O(n log n)~O(n²)", note: "mock", gag: false, maxN: 60, nonNegative: false },
-  { id: "selection", name: "Selection Sort", category: "quadratic", categoryLabel: "O(N²) 기본 정렬", complexity: "O(n²)", note: "mock", gag: false, maxN: 60, nonNegative: false },
-  { id: "merge", name: "Merge Sort", category: "efficient", categoryLabel: "개선된 정렬", complexity: "O(n log n)", note: "mock", gag: false, maxN: 60, nonNegative: false },
+  { id: "bubble", name: "Bubble Sort", category: "quadratic", categoryLabel: "O(N²) 기본 정렬", complexity: "O(n²)", note: "mock", gag: false, maxN: 250, nonNegative: false },
+  { id: "insertion", name: "Insertion Sort", category: "quadratic", categoryLabel: "O(N²) 기본 정렬", complexity: "O(n²)", note: "mock", gag: false, maxN: 250, nonNegative: false },
+  { id: "binary_tree", name: "Binary Tree Sort", category: "quadratic", categoryLabel: "O(N²) 기본 정렬", complexity: "O(n log n)~O(n²)", note: "mock", gag: false, maxN: 250, nonNegative: false },
+  { id: "selection", name: "Selection Sort", category: "quadratic", categoryLabel: "O(N²) 기본 정렬", complexity: "O(n²)", note: "mock", gag: false, maxN: 250, nonNegative: false },
+  { id: "merge", name: "Merge Sort", category: "efficient", categoryLabel: "개선된 정렬", complexity: "O(n log n)", note: "mock", gag: false, maxN: 250, nonNegative: false },
 ];
 
 // 브라우저 mock 에서도 insertion 은 key 막대를 보여주도록 백엔드 동작을 미러링.
@@ -195,18 +195,44 @@ function mockBinaryTreeFrames(input: number[]): Frame[] {
   return frames;
 }
 
+// 정렬 완료 후 왼쪽부터 한 칸씩 노랑으로 훑는 최종 확인 sweep (mock 용, 백엔드와 동일).
+function appendSweep(frames: Frame[]): Frame[] {
+  const lastF = frames[frames.length - 1];
+  if (!lastF) return frames;
+  const a = lastF.array;
+  const sorted = a.map((_, i) => i);
+  for (let i = 0; i < a.length; i++) {
+    frames.push({
+      array: [...a], active: [i], pivot: null, sorted,
+      action: "compare", note: `정렬 확인 — [${i}] = ${a[i]}`,
+      comparisons: lastF.comparisons, swaps: lastF.swaps, aux: null, tree: null, state: null,
+    });
+  }
+  frames.push({
+    array: [...a], active: [], pivot: null, sorted,
+    action: "done", note: "정렬 완료 ✓",
+    comparisons: lastF.comparisons, swaps: lastF.swaps, aux: null, tree: null, state: null,
+  });
+  return frames;
+}
+
 const mock = {
   list: async (): Promise<AlgoMeta[]> => MOCK_ALGOS,
   random: async (count: number, algoId?: string | null): Promise<RandomResult> => {
     void algoId;
-    const n = Math.max(2, Math.min(count, 60));
-    const array = Array.from({ length: n }, () => 5 + Math.floor(Math.random() * 95));
-    return { array, count: n, min: 5, max: 99, cappedBy: null };
+    const n = Math.max(2, Math.min(count, 250));
+    // 1 ~ 2N 에서 중복 없는 N개 (셔플 후 앞 n개)
+    const pool = Array.from({ length: 2 * n }, (_, i) => i + 1);
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return { array: pool.slice(0, n), count: n, min: 1, max: 2 * n, cappedBy: null };
   },
   // mock: binary_tree 는 트리 frame 까지, 그 외는 bubble frame 으로 대체.
   sort: async (algoId: string, input: number[]): Promise<SortResult> => {
     if (algoId === "binary_tree") {
-      const frames = mockBinaryTreeFrames(input);
+      const frames = appendSweep(mockBinaryTreeFrames(input));
       return {
         algoId, name: "Binary Tree Sort", complexity: "O(n log n)~O(n²)", gag: false,
         input, frames, frameCount: frames.length,
@@ -214,7 +240,7 @@ const mock = {
       };
     }
     if (algoId === "insertion") {
-      const frames = mockInsertionFrames(input);
+      const frames = appendSweep(mockInsertionFrames(input));
       return {
         algoId, name: "Insertion Sort", complexity: "O(n²)", gag: false,
         input, frames, frameCount: frames.length,
@@ -247,6 +273,7 @@ const mock = {
     }
     sortedSet.add(0);
     snap("done", [], "정렬 완료 ✓ (mock: 실제 알고리즘은 Python 백엔드에서 동작)");
+    appendSweep(frames);
     return {
       algoId, name: "Mock Bubble", complexity: "O(n²)", gag: false,
       input, frames, frameCount: frames.length, comparisons, swaps, truncated: false,

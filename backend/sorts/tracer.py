@@ -20,12 +20,14 @@ frame 스키마 (JSON 직렬화 가능):
 
 from __future__ import annotations
 
-# 너무 많은 frame 이 브릿지를 막지 않도록 안전 상한.
-MAX_FRAMES = 60_000
+# frame 폭주 안전망. 보통 입력(최대 250개)에서는 걸리지 않고 전 단계가 그대로
+# 기록된다(250개 bubble ≈ 46k frame, 87MB → 무리 없음). 이 두 배를 넘는 비정상적
+# 경우에만 균일하게 절반씩 솎아내고 stride 를 2배로 키워 메모리·전송을 보호한다.
+SOFT_CAP = 80_000
 
 
 class FrameLimitExceeded(Exception):
-    """frame 이 MAX_FRAMES 를 넘었을 때 정렬을 중단시키는 신호."""
+    """(현재 미사용) 과거 하드 상한용 신호. 다운샘플링으로 대체됨."""
 
 
 class Tracer:
@@ -45,8 +47,11 @@ class Tracer:
         self._held: list[dict] = []
         self._pointers: list[dict] = []
         self._scalars: list[dict] = []
+        # 적응형 다운샘플링 상태: stride 마다 한 장만 기록한다(큰 n 대비).
+        self._emit_count = 0
+        self._stride = 1
         # snap() 첫 호출 전, 입력 그대로의 초기 상태를 한 장 남긴다.
-        self.snap("init", note="초기 배열")
+        self.snap("init", note="초기 배열", force=True)
 
     def _state(self):
         if not self._held and not self._pointers and not self._scalars:
@@ -58,9 +63,11 @@ class Tracer:
         }
 
     # ── 내부: 한 장의 frame 을 push ──────────────────────────────
-    def snap(self, action: str, active=(), pivot=None, aux=None, note: str = ""):
-        if len(self.frames) >= MAX_FRAMES:
-            raise FrameLimitExceeded
+    def snap(self, action: str, active=(), pivot=None, aux=None, note: str = "", force: bool = False):
+        # 적응형 다운샘플: stride 마다 한 장만 기록(배열/카운트는 호출 전에 이미 갱신됨).
+        self._emit_count += 1
+        if not force and (self._emit_count % self._stride) != 0:
+            return
         self.frames.append(
             {
                 "array": list(self.a),
@@ -76,6 +83,10 @@ class Tracer:
                 "state": self._state(),
             }
         )
+        # 너무 많아지면 절반으로 균일하게 솎아내고 stride 를 2배로(메모리·전송 보호).
+        if len(self.frames) >= 2 * SOFT_CAP:
+            self.frames = self.frames[::2]
+            self._stride *= 2
 
     def set_tree(self, root=None, highlight=None, phase: str = ""):
         """이후 frame 에 함께 실릴 트리 상태를 설정한다(트리 정렬 시각화용)."""
@@ -150,4 +161,51 @@ class Tracer:
         self.lock(*range(len(self.a)))
 
     def done(self, note: str = "정렬 완료 ✓"):
-        self.snap("done", note=note)
+        self.snap("done", note=note, force=True)
+
+    def final_sweep(self):
+        """정렬 완료 후, 왼쪽부터 한 칸씩 노랑으로 훑어 올라가는 최종 확인 연출.
+
+        한 칸이 노랑(active)이었다 다음 칸으로 넘어가며 초록(sorted)으로 돌아온다.
+        값이 오름차순이라 사운드도 도→레→미… 올라간다. 다운샘플링과 무관하게
+        모든 칸을 기록한다(끝부분이라 양이 적다).
+        """
+        n = len(self.a)
+        self._tree = None
+        self._held = []
+        self._pointers = []
+        self._scalars = []
+        self.lock_all()
+        srt = sorted(self._sorted)
+        for i in range(n):
+            self.frames.append(
+                {
+                    "array": list(self.a),
+                    "active": [i],
+                    "pivot": None,
+                    "sorted": srt,
+                    "action": "compare",  # 노랑
+                    "note": f"정렬 확인 — [{i}] = {self.a[i]}",
+                    "comparisons": self.comparisons,
+                    "swaps": self.swaps,
+                    "aux": None,
+                    "tree": None,
+                    "state": None,
+                }
+            )
+        # 마지막엔 전부 초록(확정)으로 깔끔하게 마무리
+        self.frames.append(
+            {
+                "array": list(self.a),
+                "active": [],
+                "pivot": None,
+                "sorted": srt,
+                "action": "done",
+                "note": "정렬 완료 ✓",
+                "comparisons": self.comparisons,
+                "swaps": self.swaps,
+                "aux": None,
+                "tree": None,
+                "state": None,
+            }
+        )

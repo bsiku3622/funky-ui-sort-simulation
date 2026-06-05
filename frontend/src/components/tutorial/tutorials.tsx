@@ -288,14 +288,16 @@ const shell = (): JSX.Element => (
     <PyCode
       code={`def shell_sort(arr):
     n = len(arr)
-    gap = n // 2                     # 간격을 절반씩 줄여 나간다
-    while gap > 0:
+    gap = n // 2
+    if gap % 2 == 0: gap -= 1         # 홀수로 (PPT: n=11 → 5, 3, 1)
+    while gap >= 1:
         for i in range(gap, n):      # 간격 gap만큼 떨어진 원소끼리 Insertion Sort
             temp = arr[i]; j = i
             while j >= gap and arr[j - gap] > temp:
                 arr[j] = arr[j - gap]; j -= gap
             arr[j] = temp
-        gap //= 2                    # 마지막 gap=1은 보통의 Insertion Sort
+        if gap == 1: break
+        gap -= 2                      # 다음 홀수 gap: 5 → 3 → 1
     return arr`}
     />
     <ProsCons
@@ -333,22 +335,22 @@ const quick = (): JSX.Element => (
       </Prose>
     </Section>
     <PyCode
-      code={`def quick_sort(arr, low, high):
-    if low < high:
-        p = partition(arr, low, high)
-        quick_sort(arr, low, p - 1)      # pivot 왼쪽 무리
-        quick_sort(arr, p + 1, high)     # pivot 오른쪽 무리
-
-def partition(arr, low, high):
-    pivot = arr[high]                    # 맨 끝을 pivot으로
-    i = low - 1
-    for j in range(low, high):
-        if arr[j] < pivot:               # pivot보다 작으면 왼쪽으로 보낸다
-            i += 1; arr[i], arr[j] = arr[j], arr[i]
-    arr[i + 1], arr[high] = arr[high], arr[i + 1]   # pivot을 제자리에
-    return i + 1
-
-# 위는 이해하기 쉬운 Lomuto 방식이고, 강의 그림은 양끝에서 좁혀오는 Hoare 방식이다(결과는 같다).`}
+      code={`# PPT (a)~(g) 의 방식: 맨 끝을 pivot 으로 두고 양끝 포인터 l, r 을 좁혀온다.
+def quick_sort(arr, lo, hi):
+    if lo >= hi: return
+    pivot = arr[hi]                       # 맨 끝을 pivot 으로
+    l, r = lo, hi - 1
+    while True:
+        while l <= r and arr[l] < pivot:  # 왼쪽 l: pivot 보다 큰 값에서 멈춤
+            l += 1
+        while l <= r and arr[r] > pivot:  # 오른쪽 r: pivot 보다 작은 값에서 멈춤
+            r -= 1
+        if l >= r: break                  # 포인터가 엇갈리면 분할 끝
+        arr[l], arr[r] = arr[r], arr[l]   # 두 값을 교환
+        l += 1; r -= 1
+    arr[l], arr[hi] = arr[hi], arr[l]     # pivot 을 제자리 l 로 (PPT (g))
+    quick_sort(arr, lo, l - 1)            # pivot 왼쪽 무리
+    quick_sort(arr, l + 1, hi)            # pivot 오른쪽 무리`}
     />
     <ProsCons
       pros={["평균적으로 가장 빠른 비교 정렬 중 하나다", "추가 메모리가 적은 in-place sort다", "캐시 효율이 좋다"]}

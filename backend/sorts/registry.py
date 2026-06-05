@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from . import algorithms as alg
-from .tracer import FrameLimitExceeded, Tracer
+from .tracer import Tracer
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class AlgoSpec:
     note: str
     func: Callable[[Tracer], None]
     gag: bool = False
-    max_n: int = 60  # 이 알고리즘이 다룰 수 있는 최대 원소 수
+    max_n: int = 250  # 이 알고리즘이 다룰 수 있는 최대 원소 수
     non_negative: bool = False  # radix 처럼 음수 불가한지 (현재 모두 양수라 참고용)
     tags: list[str] = field(default_factory=list)
 
@@ -102,24 +102,12 @@ def run(algo_id: str, array: list[int]) -> dict:
         data = data[: spec.max_n]
 
     tracer = Tracer(data)
-    truncated = False
-    try:
-        spec.func(tracer)
-    except FrameLimitExceeded:
-        truncated = True
-        tracer.frames.append(
-            {
-                "array": list(tracer.a),
-                "active": [],
-                "pivot": None,
-                "sorted": list(range(len(tracer.a))),
-                "action": "done",
-                "note": "frame 상한 도달 — 시각화를 중단했습니다.",
-                "comparisons": tracer.comparisons,
-                "swaps": tracer.swaps,
-                "aux": None,
-            }
-        )
+    spec.func(tracer)  # frame 수는 Tracer 가 다운샘플링으로 알아서 제한한다
+    # 실제 정렬이고 결과가 정렬돼 있으면 최종 확인 sweep 연출을 덧붙인다.
+    if not spec.gag and tracer.a == sorted(tracer.a):
+        tracer.final_sweep()
+    # 다운샘플이 일어났는지(원본 단계가 frame 보다 많았는지)
+    truncated = tracer._stride > 1
 
     return {
         "algoId": spec.id,

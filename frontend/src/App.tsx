@@ -4,15 +4,21 @@ import { AlgoModal } from "./components/AlgoModal";
 import { BarCanvas } from "./components/BarCanvas";
 import { TutorialOverlay } from "./components/TutorialOverlay";
 import { listAlgorithms, randomArray, sort } from "./lib/bridge";
+import { ensureAudio, playValue } from "./lib/sound";
 import type { AlgoMeta, Frame, SortResult } from "./lib/types";
 
 // 속도 프리셋: frame 사이 지연(ms) + 막대 색 전이 시간(ms).
 // 빠를수록 전이를 짧게(거의 즉시) 해야 직전 색과 안 섞이고 또렷이 보인다.
+// ms = frame 사이 지연, trans = 막대 색 전이(ms), step = 한 틱에 건너뛸 frame 수
+// (빠른 속도는 렌더 한계 때문에 step 으로 실제 진행을 빠르게 한다)
 const SPEEDS = [
-  { label: "0.5×", ms: 320, trans: 90 },
-  { label: "1×", ms: 140, trans: 40 },
-  { label: "2×", ms: 60, trans: 10 },
-  { label: "4×", ms: 22, trans: 1 },
+  { label: "0.5×", ms: 320, trans: 90, step: 1 },
+  { label: "1×", ms: 140, trans: 40, step: 1 },
+  { label: "2×", ms: 60, trans: 10, step: 1 },
+  { label: "4×", ms: 22, trans: 1, step: 1 },
+  { label: "20×", ms: 8, trans: 0, step: 3 },
+  { label: "50×", ms: 6, trans: 0, step: 8 },
+  { label: "100×", ms: 4, trans: 0, step: 16 },
 ];
 const DEFAULT_SPEED = 1;
 
@@ -31,6 +37,7 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED);
   const [busy, setBusy] = useState(false);
+  const [soundOn, setSoundOn] = useState(false);
 
   // ── 초기 로드: 알고리즘 목록 + 첫 랜덤 배열 ──────────────
   // pywebview 브릿지 준비 타이밍이 들쭉날쭉해 목록이 비면 잠깐 뒤 재시도한다.
@@ -90,12 +97,30 @@ export default function App() {
       return;
     }
     timer.current = window.setTimeout(() => {
-      setFrameIdx((i) => Math.min(i + 1, frames.length - 1));
+      // 빠른 속도는 한 틱에 step 만큼 건너뛰어 실제로 빨리 진행한다.
+      const stepN = SPEEDS[speedIdx].step;
+      setFrameIdx((i) => Math.min(i + stepN, frames.length - 1));
     }, SPEEDS[speedIdx].ms);
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
     };
   }, [playing, frameIdx, atEnd, speedIdx, frames.length]);
+
+  // ── 사운드: frame 이 바뀔 때 지금 건드리는 막대 값으로 음을 낸다(높은 값=높은 음) ──
+  useEffect(() => {
+    if (!soundOn || !result) return;
+    const f = frames[frameIdx];
+    const idx = f?.active?.[0];
+    if (idx == null) return;
+    const v = f.array[idx];
+    if (v != null) playValue(v, maxValue);
+  }, [frameIdx, soundOn, result, frames, maxValue]);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    if (next) ensureAudio(); // 켤 때(제스처 안에서) 오디오 깨우기
+  };
 
   // ── 동작 핸들러 ─────────────────────────────────────────
   const handleRandom = useCallback(
@@ -167,11 +192,12 @@ export default function App() {
       return;
     }
     const max = current?.maxN ?? 60;
-    setCount(Math.max(2, Math.min(v, Math.min(60, max))));
+    setCount(Math.max(2, Math.min(v, Math.min(250, max))));
   };
 
   // 가운데 버튼: 재생 중이면 STOP(일시정지), 아니면 START/재생/다시.
   const handleCenter = () => {
+    if (soundOn) ensureAudio(); // START 제스처 안에서 오디오 재개
     if (playing) {
       setPlaying(false);
       return;
@@ -239,6 +265,9 @@ export default function App() {
           </Text>
         </div>
         <div className="app__mode">
+          <Button variant={soundOn ? "success" : "neutral"} onClick={toggleSound}>
+            소리 {soundOn ? "ON" : "OFF"}
+          </Button>
           <Button variant="warning" onClick={() => setTutorOpen(true)} disabled={!current}>
             학습
           </Button>
@@ -315,7 +344,7 @@ export default function App() {
           <Input
             type="number"
             min={2}
-            max={Math.min(60, current?.maxN ?? 60)}
+            max={Math.min(250, current?.maxN ?? 250)}
             value={count}
             onChange={onCountChange}
             className="control__count"

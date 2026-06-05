@@ -32,7 +32,7 @@ DEV_URL = "http://localhost:5173"
 VALUE_MIN = 5
 VALUE_MAX = 99
 DEFAULT_COUNT = 16
-MAX_COUNT = 60
+MAX_COUNT = 250
 
 
 class Api:
@@ -62,12 +62,13 @@ class Api:
                 n = spec.max_n
                 capped_by = spec.name
 
-        values = [random.randint(VALUE_MIN, VALUE_MAX) for _ in range(n)]
+        # 1 ~ 2N 에서 서로 다른(중복 없는) 값 N개 → 정렬 시 매끈한 계단, 평평한 구간 없음
+        values = random.sample(range(1, 2 * n + 1), n)
         return {
             "array": values,
             "count": n,
-            "min": VALUE_MIN,
-            "max": VALUE_MAX,
+            "min": 1,
+            "max": 2 * n,
             "cappedBy": capped_by,  # max_n 때문에 잘렸으면 알고리즘 이름
         }
 

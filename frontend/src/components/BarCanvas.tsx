@@ -129,7 +129,7 @@ export function BarCanvas({ frame, maxValue, transMs }: Props) {
           ))}
         </div>
       )}
-      <div className="bars" data-count={n} style={barsStyle}>
+      <div className={`bars ${n > 60 ? "bars--dense" : ""}`} data-count={n} style={barsStyle}>
         {heldBars}
         {held.length > 0 && <div className="bars__divider" aria-hidden />}
         {arrayBars}
